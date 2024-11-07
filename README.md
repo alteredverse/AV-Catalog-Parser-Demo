@@ -1,6 +1,6 @@
 # Alteredverse Product Catalog Parser
 
-A Gradio app for generating and feeding structured common knowledge to the Inworld AI Studio API using data from product catalogs in JSON format. The app is hosted on Hugging Face Spaces and can be run locally as well.
+A Gradio app for generating and feeding structured common knowledge to the Inworld AI Studio API using data from product catalogs in JSON format. The app is hosted on Hugging Face Spaces and can also be run locally.
 
 ## 🚀 Live Demo URL
 
@@ -26,4 +26,24 @@ conda create -n nvidia_llama python=3.10
 conda activate nvidia_llama
 ```
 
+### 2. Install Requirements
+
+Use `pip` to install the dependencies listed in `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
+## ▶️ How to Run the App
+To run the Gradio app locally, use:
+
+```bash
+python app.py
+```
+This will launch the Gradio app in your default browser, where you can interact with the interface.
+
+## 💡 Usage Guide
+Input a product catalog: The app takes a .pdf file containing product details.
+Generate common knowledge: The app extracts and formats the product information.
+Feed to Inworld AI API: The processed data is sent to the Inworld AI Studio API.
 
