@@ -35,7 +35,7 @@ pip install -r requirements.txt
 ```
 
 ## ▶️ How to Run the App
-To run the Gradio app locally, use:
+To run the Gradio app locally, prepare NVIDIA, LLAMA_CLOUD, CONVAI API Keys, and ConvAI characters. Then put the API keys in the scripts accordingly and use:
 
 ```bash
 python app.py
@@ -45,5 +45,5 @@ This will launch the Gradio app in your default browser, where you can interact 
 ## 💡 Usage Guide
 Input a product catalog: The app takes a .pdf file containing product details.
 Generate common knowledge: The app extracts and formats the product information.
-Feed to Inworld AI API: The processed data is sent to the Inworld AI Studio API.
+Feed to ConvAI API: The processed data is sent to the ConvAI Studio API.
 
