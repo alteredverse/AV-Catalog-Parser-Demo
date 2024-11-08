@@ -20,8 +20,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Set environment variables for API keys
-os.environ["NVIDIA_API_KEY"] = "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"
-os.environ["LLAMA_CLOUD_API_KEY"] = "llx-ZTv0rJh63lGOEECXEaqhzWP9mp7Yft2REL7lI3xbgffgxMiU"
+os.environ["NVIDIA_API_KEY"] = "your-nvidia-api-key"
+os.environ["LLAMA_CLOUD_API_KEY"] = "your-llama-cloud-api-key"
 
 
 @dataclass
@@ -259,15 +259,15 @@ def retrieve_product_info_from_pdf(pdf_path):
         print("Processing completed successfully!")
         print(f"Extracted information: {json.dumps(json_data, indent=2)}")
 
-        # feed to inworld API
+        # feed to convai API
         out_path = f"./output/{Path(pdf_path).stem}_processed.json"
         response = common_knowledge_fill.feed_common_knowledge_from_json(out_path)
         if response:
-            inworld_response = "Successfully submitted the common knowledge to inworld engine!"
+            convai_response = "Successfully submitted the common knowledge to convai character!"
         else:
-            inworld_response = "Failed to submit the common knowledge to inworld engine!"
+            convai_response = "Failed to submit the common knowledge to convai character!"
 
-        return json_data, inworld_response
+        return json_data, convai_response
     except Exception as e:
         logger.error(f"Failed to process catalog: {e}")
         return [], ""
