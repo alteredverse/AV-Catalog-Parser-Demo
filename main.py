@@ -13,6 +13,9 @@ from llama_index.readers.file import PyMuPDFReader
 from llama_index.core.node_parser import SimpleNodeParser
 from llama_index.core import Response, Settings
 
+import nemo  # NVIDIA NeMo
+from nemo_text_processing.text_normalization.normalize import Normalizer
+from nemoguardrails import LLMRails, RailsConfig
 import common_knowledge_fill
 
 # Configure logging
@@ -65,7 +68,39 @@ class ProductCatalogProcessor:
         Settings.llm = self.llm
         self.pdf_reader = PyMuPDFReader()
         self.node_parser = SimpleNodeParser.from_defaults()
-        self.max_chunk_size = 450  # 250  # Keep some buffer below the 512 limit
+        self.max_chunk_size = 450
+
+        # Initialize NVIDIA NeMo components
+        self.text_normalizer = Normalizer(input_case='cased', lang='en')
+        self.rails_config = RailsConfig.from_content(
+            """
+                rails:
+                      # Input rails are invoked when a new message from the user is received.
+                      input:
+                        flows:
+                          - check jailbreak
+                          - check input sensitive data
+                          - check toxicity
+                          - check product information format
+                          - ensure content is business-appropriate
+                    
+                      # Output rails are triggered after a bot message has been generated.
+                      output:
+                        flows:
+                          - self check facts
+                          - self check hallucination
+                          - check output sensitive data
+                          - validate product information
+                          - ensure response is appropriate
+                    
+                      # Retrieval rails are invoked once `$relevant_chunks` are computed.
+                      retrieval:
+                        flows:
+                          - check retrieval sensitive data
+                          - ensure content accuracy
+                          - verify relevance of information
+            """)
+        self.guardrails = LLMRails(self.rails_config)
 
     def split_into_smaller_chunks(self, text: str) -> List[str]:
         """Split text into chunks that respect the token limit."""
@@ -75,21 +110,26 @@ class ProductCatalogProcessor:
         current_length = 0
 
         for word in words:
-            # Approximate token count (rough estimate: 1 token ≈ 4 chars)
             word_length = len(word) // 4 + 1
-
             if current_length + word_length > self.max_chunk_size:
                 chunks.append(" ".join(current_chunk))
-                current_chunk = [word]  # Start a new chunk with the current word
-                current_length = word_length  # Reset the length to the length of the current word
+                current_chunk = [word]
+                current_length = word_length
             else:
                 current_chunk.append(word)
-                current_length += word_length  # Add the word to the current chunk
+                current_length += word_length
 
         if current_chunk:
-            chunks.append(" ".join(current_chunk))  # Add the last chunk
-
+            chunks.append(" ".join(current_chunk))
         return chunks
+
+    def process_text_with_nemo(self, text: str) -> str:
+        """Use NeMo to normalize text."""
+        return self.text_normalizer.normalize(text)
+
+    def apply_guardrails(self, text: str) -> str:
+        """Use NeMo Guardrails to enforce output rules."""
+        return self.guardrails.generate(text)
 
     def process_tables(self, pdf_path: str) -> List[Dict]:
         tables = []
@@ -111,53 +151,41 @@ class ProductCatalogProcessor:
         return tables
 
     def merge_product_infos(self, all_products: List[List[ProductInfo]]) -> List[ProductInfo]:
-        """Merge multiple lists of ProductInfo objects."""
-        # Create a dictionary to store products by name
         merged_products = {}
-
         for product_list in all_products:
             for product in product_list:
                 if not product.name:
                     continue
-
                 if product.name not in merged_products:
                     merged_products[product.name] = product
                 else:
-                    # Update existing product with any new information
                     existing = merged_products[product.name]
                     if not existing.description and product.description:
                         existing.description = product.description
                     if not existing.price and product.price:
                         existing.price = product.price
                     existing.specifications.update(product.specifications or {})
-
         return list(merged_products.values())
 
     def parse_llm_response(self, response: Union[Response, str]) -> List[ProductInfo]:
+        response_text = response.response if isinstance(response, Response) else str(response)
         try:
-            response_text = response.response if isinstance(response, Response) else str(response)
-
-            # Extract JSON content from the response
             start_idx = response_text.find('[')
             end_idx = response_text.rfind(']') + 1
-
             if start_idx == -1 or end_idx == 0:
                 logger.warning("No valid JSON array found in response")
                 return []
-
             json_text = response_text[start_idx:end_idx]
             products_data = json.loads(json_text)
-
-            products = []
-            for product_data in products_data:
-                product = ProductInfo(
+            products = [
+                ProductInfo(
                     name=product_data.get('name'),
-                    description=product_data.get('description'),
+                    description=self.process_text_with_nemo(product_data.get('description', "")),
                     price=product_data.get('price'),
                     specifications=product_data.get('specifications', {})
                 )
-                products.append(product)
-
+                for product_data in products_data
+            ]
             return products
         except Exception as e:
             logger.error(f"Error parsing LLM response: {e}\nResponse text: {response_text}")
@@ -165,7 +193,7 @@ class ProductCatalogProcessor:
 
     def create_structured_query(self, product_type: str) -> str:
         return f"""
-        Analyze the provided text and extract detailed product information about {product_type}. 
+        Analyze the provided text and extract detailed product information about {product_type}.
         Focus on finding the following details in the text:
         - Product name/model
         - Product description
@@ -193,52 +221,32 @@ class ProductCatalogProcessor:
     def process_pdf(self, pdf_path: str, product_type: str = "product") -> Dict:
         try:
             logger.info(f"Processing PDF: {pdf_path}")
-
-            # Load text content and tables
             documents = self.pdf_reader.load(file_path=pdf_path)
             tables = self.process_tables(pdf_path)
-
-            # Process text in smaller chunks
             all_products = []
+
             for doc in documents:
                 chunks = self.split_into_smaller_chunks(doc.text)
-
-                # Process each chunk
                 for chunk in chunks:
-                    logger.info(f"Processing chunk of size {len(chunk)}")
                     try:
+                        normalized_chunk = self.process_text_with_nemo(chunk)
                         index = VectorStoreIndex.from_documents(
-                            [Document(text=chunk)],
+                            [Document(text=normalized_chunk)],
                             embed_model=self.embedder,
                             llm=self.llm
                         )
-
-                        query_engine = index.as_query_engine(
-                            similarity_top_k=1,
-                            response_mode="compact"
-                        )
-
-                        # Get structured query
+                        query_engine = index.as_query_engine(similarity_top_k=1, response_mode="compact")
                         structured_query = self.create_structured_query(product_type)
-
-                        # Process the chunk
                         response = query_engine.query(structured_query)
                         chunk_products = self.parse_llm_response(response)
                         if chunk_products:
                             all_products.append(chunk_products)
-
                     except Exception as e:
-                        # Handle cases where chunk exceeds the token limit or other errors occur
                         logger.warning(f"Skipping chunk due to error: {e}")
-                        continue  # Skip this chunk and proceed with the next one
+                        continue
 
-            # Merge all product information
             merged_products = self.merge_product_infos(all_products)
-
-            # Create catalog
             catalog = ProductCatalog(products=merged_products, tables=tables)
-
-            # Save results
             result_dict = catalog.to_dict()
             output_path = self.output_dir / f"{Path(pdf_path).stem}_processed.json"
             with open(output_path, 'w', encoding='utf-8') as f:
@@ -246,7 +254,6 @@ class ProductCatalogProcessor:
 
             logger.info(f"Saved processed data to {output_path}")
             return result_dict
-
         except Exception as e:
             logger.error(f"Error processing PDF: {e}")
             raise
@@ -274,6 +281,5 @@ def retrieve_product_info_from_pdf(pdf_path):
 
 
 if __name__ == '__main__':
-    # pdf_path = "./catalogue/catalog_flexpocket.pdf"
     pdf_path = "./catalogue/ASICS_Team_Catalog.pdf"
     retrieve_product_info_from_pdf(pdf_path)
