@@ -72,10 +72,11 @@ To run the Gradio app locally, prepare NVIDIA, LLAMA_CLOUD, CONVAI API Keys, and
 ```bash
 python app.py
 ```
-This will launch the Gradio app in your default browser, where you can interact with the interface.
+This will launch the Gradio app in your default browser, where you can interact with the interface. 
 
 ## 💡 Usage Guide
 Input a product catalog: The app takes a .pdf file containing product details.
 Generate common knowledge: The app extracts and formats the product information.
-Feed to ConvAI API: The processed data is sent to the ConvAI Studio API.
+Feed to ConvAI API: The processed data is sent through the ConvAI Studio API to enrich the ConvAI character/avatar knowledge.
+Then, you can chat with the ConvAI character about the products from the catalog. Cheers!
 
