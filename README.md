@@ -2,7 +2,7 @@
 
 A Gradio app for generating and feeding structured common knowledge to the Inworld AI Studio API using data from product catalogs in JSON format. The app is hosted on Hugging Face Spaces and can also be run locally.
 
-## Project Description: Automated PDF Product Catalog Processor for Virtual Sales Avatar
+## 💼 Project Description: Automated PDF Product Catalog Processor for Virtual Sales Avatar
 
 This project automates the extraction, processing, and structured output of product information from PDF-based catalogs, leveraging NVIDIA's powerful AI tools and libraries. The pipeline is designed to handle complex data structures, including tables and embedded text, and formats the output into JSON. Here's a step-by-step breakdown of the process:
 
